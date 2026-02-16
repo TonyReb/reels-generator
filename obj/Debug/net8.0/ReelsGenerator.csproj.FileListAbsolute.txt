@@ -1,0 +1,17 @@
+e:\reels\reels-generator\bin\Debug\net8.0\ReelsGenerator.exe
+e:\reels\reels-generator\bin\Debug\net8.0\ReelsGenerator.deps.json
+e:\reels\reels-generator\bin\Debug\net8.0\ReelsGenerator.runtimeconfig.json
+e:\reels\reels-generator\bin\Debug\net8.0\ReelsGenerator.dll
+e:\reels\reels-generator\bin\Debug\net8.0\ReelsGenerator.pdb
+e:\reels\reels-generator\bin\Debug\net8.0\YamlDotNet.dll
+e:\reels\reels-generator\obj\Debug\net8.0\ReelsGenerator.csproj.AssemblyReference.cache
+e:\reels\reels-generator\obj\Debug\net8.0\ReelsGenerator.GeneratedMSBuildEditorConfig.editorconfig
+e:\reels\reels-generator\obj\Debug\net8.0\ReelsGenerator.AssemblyInfoInputs.cache
+e:\reels\reels-generator\obj\Debug\net8.0\ReelsGenerator.AssemblyInfo.cs
+e:\reels\reels-generator\obj\Debug\net8.0\ReelsGenerator.csproj.CoreCompileInputs.cache
+e:\reels\reels-generator\obj\Debug\net8.0\ReelsGen.84F43F70.Up2Date
+e:\reels\reels-generator\obj\Debug\net8.0\ReelsGenerator.dll
+e:\reels\reels-generator\obj\Debug\net8.0\refint\ReelsGenerator.dll
+e:\reels\reels-generator\obj\Debug\net8.0\ReelsGenerator.pdb
+e:\reels\reels-generator\obj\Debug\net8.0\ReelsGenerator.genruntimeconfig.cache
+e:\reels\reels-generator\obj\Debug\net8.0\ref\ReelsGenerator.dll

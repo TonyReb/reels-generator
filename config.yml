@@ -1,0 +1,75 @@
+# Genetic Algorithm Configuration
+genetic_algorithm:
+  pop_size: 3
+  generations: 2
+  crossover_rate: 0.9
+  mutation_rate: 0.02
+  crossover_alpha: 0.5
+  mutation_sigma: 3.0
+  elitism: 2
+  tournament_k: 3
+  maximize: false
+  seed: 42
+
+# Simulation Parameters
+simulation:
+  spin_number: 10000
+  target_rtp: 0.45
+  target_hit_frequency: 0.15
+
+# Reel Generation Configuration
+reel_generation:
+  radius: 3
+  seed: 1
+  
+  # Symbol Stack Parameters (LOW and HIGH values for reel generation)
+  symbol_stacks:
+    low:
+      0: [1, 0, 0]
+      1: [1, 0, 0]
+      2: [1, 1, 1]
+      3: [1, 1, 1]
+      4: [1, 1, 1]
+      5: [1, 1, 1]
+      6: [1, 1, 1]
+      7: [1, 1, 1]
+      8: [1, 1, 1]
+      9: [1, 1, 1]
+    high:
+      0: [2, 0, 0]
+      1: [5, 0, 0]
+      2: [2, 2, 2]
+      3: [2, 2, 2]
+      4: [5, 5, 5]
+      5: [5, 5, 5]
+      6: [20, 10, 10]
+      7: [20, 10, 10]
+      8: [20, 10, 10]
+      9: [20, 10, 10]
+
+# Slot Machine Configuration
+slot_machine:
+  window: [3, 3, 3]
+  icon_wild: [0]
+  icon_scatter: [1]
+  
+  # Paytable structure
+  paytable:
+    0:  [0, 30]
+    1:  [0, 0]
+    2:  [0, 20]
+    3:  [0, 15]
+    4:  [0, 8]
+    5:  [0, 8]
+    6:  [0, 2]
+    7:  [0, 2]
+    8:  [0, 2]
+    9:  [0, 1]
+  
+  # Pay lines
+  lines:
+   - [0, 0, 0]
+   - [1, 1, 1]
+   - [2, 2, 2]
+   - [0, 1, 2]
+   - [2, 1, 0]
