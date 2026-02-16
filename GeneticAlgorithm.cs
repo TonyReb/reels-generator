@@ -14,6 +14,8 @@ public class GAConfig
     public int TournamentK { get; set; } = 3;
     public bool Maximize { get; set; } = true;
     public int Seed { get; set; } = 123;
+    public float CrossoverAlpha { get; set; } = 0.5f;
+    public double MutationSigma { get; set; } = 3.0;
 }
 
 public class GAResult
@@ -34,13 +36,15 @@ public class GeneticAlgorithm
         // Instance variables for configuration
         private Dictionary<int, List<int>> LOW;
         private Dictionary<int, List<int>> HIGH;
-        private int[] SYMBOLS = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+        private int[] SYMBOLS;
         private double MUT_SIGMA;
         private float CROSSOVER_ALPHA;
         private double TARGET_RTP;
         private double TARGET_HIT_FREQUENCY;
         private int REEL_RADIUS;
         private int REEL_SEED;
+        private int SPIN_NUMBER;
+        private SlotMachineConfig SLOT_CONFIG;
 
         private GAConfig config;
         private Random rng;
@@ -53,95 +57,36 @@ public class GeneticAlgorithm
             double targetHitFrequency,
             int reelRadius,
             int reelSeed,
-            Dictionary<string, object>? slotMachineConfig = null)
+            int spinNumber,
+            SlotMachineConfig slotConfig)
         {
             config = gaConfig;
             rng = new Random(config.Seed);
             LOW = low;
             HIGH = high;
+            SYMBOLS = LOW.Keys.Union(HIGH.Keys).OrderBy(x => x).ToArray();
+            foreach (var symbol in SYMBOLS)
+            {
+                if (!LOW.ContainsKey(symbol) || !HIGH.ContainsKey(symbol))
+                {
+                    throw new InvalidOperationException($"Symbol {symbol} must exist in both low and high stacks.");
+                }
+
+                if (LOW[symbol].Count != HIGH[symbol].Count)
+                {
+                    throw new InvalidOperationException($"Symbol {symbol} low/high stack lengths must match.");
+                }
+            }
             TARGET_RTP = targetRtp;
             TARGET_HIT_FREQUENCY = targetHitFrequency;
             REEL_RADIUS = reelRadius;
             REEL_SEED = reelSeed;
+            SPIN_NUMBER = spinNumber;
+            SLOT_CONFIG = slotConfig;
             
-            // Load mutation sigma and crossover alpha if provided
-            MUT_SIGMA = 3.0;
-            CROSSOVER_ALPHA = 0.5f;
+            MUT_SIGMA = config.MutationSigma;
+            CROSSOVER_ALPHA = config.CrossoverAlpha;
 
-        }
-
-        private static Dictionary<int, List<int>> ConvertToIntListMap(object obj)
-        {
-            var result = new Dictionary<int, List<int>>();
-            if (obj is Dictionary<object, object> dict)
-            {
-                foreach (var kvp in dict)
-                {
-                    int key;
-                    if (kvp.Key is int intKey)
-                        key = intKey;
-                    else if (kvp.Key is long longKey)
-                        key = (int)longKey;
-                    else if (kvp.Key is string strKey && int.TryParse(strKey, out int parsedKey))
-                        key = parsedKey;
-                    else
-                        continue;
-
-                    if (kvp.Value is List<object> valueList)
-                    {
-                        var intList = new List<int>();
-                        foreach (var item in valueList)
-                        {
-                            int val;
-                            if (item is int intVal)
-                                val = intVal;
-                            else if (item is long longVal)
-                                val = (int)longVal;
-                            else if (item is string strVal && int.TryParse(strVal, out int parsedVal))
-                                val = parsedVal;
-                            else
-                                continue;
-                            intList.Add(val);
-                        }
-                        result[key] = intList;
-                    }
-                }
-            }
-            return result;
-        }
-
-        private static Dictionary<int, List<int>> GetDefaultLOW()
-        {
-            return new Dictionary<int, List<int>>
-            {
-                {0, new List<int> {1, 0, 0}},
-                {1, new List<int> {1, 0, 0}},
-                {2, new List<int> {1, 1, 1}},
-                {3, new List<int> {1, 1, 1}},
-                {4, new List<int> {1, 1, 1}},
-                {5, new List<int> {1, 1, 1}},
-                {6, new List<int> {1, 1, 1}},
-                {7, new List<int> {1, 1, 1}},
-                {8, new List<int> {1, 1, 1}},
-                {9, new List<int> {1, 1, 1}},
-            };
-        }
-
-        private static Dictionary<int, List<int>> GetDefaultHIGH()
-        {
-            return new Dictionary<int, List<int>>
-            {
-                {0, new List<int> {2, 0, 0}},
-                {1, new List<int> {5, 0, 0}},
-                {2, new List<int> {2, 2, 2}},
-                {3, new List<int> {2, 2, 2}},
-                {4, new List<int> {5, 5, 5}},
-                {5, new List<int> {5, 5, 5}},
-                {6, new List<int> {20, 10, 10}},
-                {7, new List<int> {20, 10, 10}},
-                {8, new List<int> {20, 10, 10}},
-                {9, new List<int> {20, 10, 10}},
-            };
         }
 
         private (double, double, double) FitnessSphere(Individual ind)
@@ -154,7 +99,7 @@ public class GeneticAlgorithm
                 reelsData.Add(reel);
         }
 
-        Game game = new(reelsData);
+        Game game = new(reelsData, SPIN_NUMBER, SLOT_CONFIG);
         game.Run();
         var (rtp, hitFrequency) = game.GetStats();
 
@@ -216,6 +161,12 @@ public class GeneticAlgorithm
         return clone;
     }
 
+    private ReelGenerator CreateReelGenerator()
+    {
+        var specialSymbols = SLOT_CONFIG.IconWild.Concat(SLOT_CONFIG.IconScatter);
+        return new ReelGenerator(specialSymbols);
+    }
+
     private (Individual, Individual) CrossoverBlend(Individual a, Individual b)
     {
         var rng1 = new Random(this.rng.Next());
@@ -258,7 +209,7 @@ public class GeneticAlgorithm
                 }
             }
 
-            var reelGen = new ReelGenerator();
+            var reelGen = CreateReelGenerator();
             var reel1 = reelGen.Generate(item1, REEL_RADIUS, REEL_SEED);
             var reel2 = reelGen.Generate(item2, REEL_RADIUS, REEL_SEED);
 
@@ -296,7 +247,7 @@ public class GeneticAlgorithm
                 {
                     int val = ind.Items[reelNumber][symbol][index];
 
-                    if (random.NextDouble() < 0.2)
+                    if (random.NextDouble() < config.MutationRate)
                     {
                         // Gaussian mutation
                         double gaussian = GetGaussian(0.0, MUT_SIGMA, random);
@@ -308,8 +259,8 @@ public class GeneticAlgorithm
                 }
             }
 
-            var reelGen = new ReelGenerator();
-            var reel = reelGen.Generate(item, 3, 1);
+            var reelGen = CreateReelGenerator();
+            var reel = reelGen.Generate(item, REEL_RADIUS, REEL_SEED);
 
             if (reel != null)
             {
@@ -334,14 +285,14 @@ public class GeneticAlgorithm
             foreach (int symbol in SYMBOLS)
             {
                 item[symbol] = new List<int>();
-                for (int index = 0; index < 3; index++)
+                for (int index = 0; index < LOW[symbol].Count; index++)
                 {
                     item[symbol].Add(rng.Next(LOW[symbol][index], HIGH[symbol][index] + 1));
                 }
             }
 
-            var reelGen = new ReelGenerator();
-            var reel = reelGen.Generate(item, 3, 1);
+            var reelGen = CreateReelGenerator();
+            var reel = reelGen.Generate(item, REEL_RADIUS, REEL_SEED);
 
             if (reel != null)
             {

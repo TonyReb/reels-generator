@@ -15,3 +15,4 @@ e:\reels\reels-generator\obj\Debug\net8.0\refint\ReelsGenerator.dll
 e:\reels\reels-generator\obj\Debug\net8.0\ReelsGenerator.pdb
 e:\reels\reels-generator\obj\Debug\net8.0\ReelsGenerator.genruntimeconfig.cache
 e:\reels\reels-generator\obj\Debug\net8.0\ref\ReelsGenerator.dll
+E:\reels\reels-generator\obj\Debug\net8.0\ReelsGenerator.sourcelink.json

@@ -73,14 +73,20 @@ public class Stack
 
 public class ReelGenerator
 {
-    private HashSet<int> specialSymbols = new() { 0, 1 };
-    private HashSet<int> highSymbols = new();
+    private HashSet<int> specialSymbols;
+    private HashSet<int> highSymbols;
 
     private Func<float>? rand;
 
     private List<Stack> specialStacks = new();
     private Dictionary<int, List<Stack>> highStacks = new();
     private Dictionary<int, List<Stack>> lowStacks = new();
+
+    public ReelGenerator(IEnumerable<int>? configuredSpecialSymbols = null, IEnumerable<int>? configuredHighSymbols = null)
+    {
+        specialSymbols = configuredSpecialSymbols?.ToHashSet() ?? new HashSet<int> { 0, 1 };
+        highSymbols = configuredHighSymbols?.ToHashSet() ?? new HashSet<int>();
+    }
 
     public void BuildStacks(Dictionary<int, List<int>> data)
     {

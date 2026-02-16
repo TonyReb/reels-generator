@@ -1,59 +1,53 @@
-﻿using System;
-using System.Collections.Generic;
+using System;
+using System.IO;
 using ReelsGenerator;
+using YamlDotNet.Serialization;
+using YamlDotNet.Serialization.NamingConventions;
 
-// Direct configuration - no YAML parsing needed
+var configPath = args.Length > 0 ? args[0] : "config.yml";
+if (!File.Exists(configPath))
+{
+    throw new FileNotFoundException($"Config file not found: {configPath}");
+}
+
+var yaml = File.ReadAllText(configPath);
+var deserializer = new DeserializerBuilder()
+    .WithNamingConvention(UnderscoredNamingConvention.Instance)
+    .IgnoreUnmatchedProperties()
+    .Build();
+
+var appConfig = deserializer.Deserialize<AppConfig>(yaml)
+    ?? throw new InvalidOperationException("Failed to parse YAML config.");
+
+if (appConfig.ReelGeneration.SymbolStacks.Low.Count == 0 || appConfig.ReelGeneration.SymbolStacks.High.Count == 0)
+{
+    throw new InvalidOperationException("YAML config must define non-empty low/high symbol stacks.");
+}
+if (appConfig.Simulation.SpinNumber <= 0)
+{
+    throw new InvalidOperationException("simulation.spin_number must be greater than 0.");
+}
+if (appConfig.SlotMachine.Window.Count == 0 || appConfig.SlotMachine.Lines.Count == 0 || appConfig.SlotMachine.Paytable.Count == 0)
+{
+    throw new InvalidOperationException("slot_machine.window, slot_machine.lines and slot_machine.paytable must be defined.");
+}
+
 var gaConfig = new GAConfig
 {
-    PopSize = 20,
-    Generations = 10,
-    CrossoverRate = 0.9f,
-    MutationRate = 0.05f,
-    Elitism = 2,
-    TournamentK = 3,
-    Maximize = false,
-    Seed = 42
+    PopSize = appConfig.GeneticAlgorithm.PopSize,
+    Generations = appConfig.GeneticAlgorithm.Generations,
+    CrossoverRate = appConfig.GeneticAlgorithm.CrossoverRate,
+    MutationRate = appConfig.GeneticAlgorithm.MutationRate,
+    CrossoverAlpha = appConfig.GeneticAlgorithm.CrossoverAlpha,
+    MutationSigma = appConfig.GeneticAlgorithm.MutationSigma,
+    Elitism = appConfig.GeneticAlgorithm.Elitism,
+    TournamentK = appConfig.GeneticAlgorithm.TournamentK,
+    Maximize = appConfig.GeneticAlgorithm.Maximize,
+    Seed = appConfig.GeneticAlgorithm.Seed
 };
 
-// Symbol stacks
-var lowStacks = new Dictionary<int, List<int>>
-{
-    {0, new List<int> {1, 0, 0}},
-    {1, new List<int> {1, 1, 1}},
-    {2, new List<int> {1, 1, 1}},
-    {3, new List<int> {1, 1, 1}},
-    {4, new List<int> {1, 1, 1}},
-    {5, new List<int> {1, 1, 1}},
-    {6, new List<int> {1, 1, 1}},
-    {7, new List<int> {1, 1, 1}},
-    {8, new List<int> {1, 1, 1}},
-    {9, new List<int> {1, 1, 1}},
-};
-
-var highStacks = new Dictionary<int, List<int>>
-{
-    {0, new List<int> {1, 0, 0}},
-    {1, new List<int> {5, 5, 5}},
-    {2, new List<int> {1, 1, 1}},
-    {3, new List<int> {2, 2, 2}},
-    {4, new List<int> {3, 3, 3}},
-    {5, new List<int> {4, 4, 4}},
-    {6, new List<int> {10, 10, 10}},
-    {7, new List<int> {10, 10, 10}},
-    {8, new List<int> {10, 10, 10}},
-    {9, new List<int> {20, 20, 20}},
-};
-
-// Simulation parameters
-double targetRtp = 0.45;
-double targetHitFrequency = 0.15;
-
-// Reel generation parameters
-int reelRadius = 3;
-int reelSeed = 1;
-
-// Run genetic algorithm
 Console.WriteLine("Starting Genetic Algorithm for Slot Reel Generation...");
+Console.WriteLine($"Config path: {configPath}");
 Console.WriteLine($"Population size: {gaConfig.PopSize}");
 Console.WriteLine($"Generations: {gaConfig.Generations}");
 Console.WriteLine($"Crossover rate: {gaConfig.CrossoverRate}");
@@ -62,7 +56,16 @@ Console.WriteLine($"Elitism: {gaConfig.Elitism}");
 Console.WriteLine($"Tournament K: {gaConfig.TournamentK}");
 Console.WriteLine("-------------------------------------------");
 
-var ga = new GeneticAlgorithm(gaConfig, lowStacks, highStacks, targetRtp, targetHitFrequency, reelRadius, reelSeed);
+var ga = new GeneticAlgorithm(
+    gaConfig,
+    appConfig.ReelGeneration.SymbolStacks.Low,
+    appConfig.ReelGeneration.SymbolStacks.High,
+    appConfig.Simulation.TargetRtp,
+    appConfig.Simulation.TargetHitFrequency,
+    appConfig.ReelGeneration.Radius,
+    appConfig.ReelGeneration.Seed,
+    appConfig.Simulation.SpinNumber,
+    appConfig.SlotMachine);
 var result = ga.Run();
 
 Console.WriteLine("\n===== RESULTS =====");

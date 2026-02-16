@@ -1,0 +1,13 @@
+{
+  "profiles": {
+    "ReelsGenerator": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "commandLineArgs": "config.yml",
+      "workingDirectory": "e:\\reels\\reels-generator",
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}

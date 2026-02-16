@@ -14,14 +14,20 @@ public class Slot
     private HashSet<int> iconWild;
     private HashSet<int> iconScatter;
     private List<List<int>> linesBase;
-    private int cntLine;
     private List<List<int>> lines;
 
-    public Slot(List<List<int>> reelsData)
+    public Slot(List<List<int>> reelsData, SlotMachineConfig config)
     {
-        // Window size set directly (hard-coded)
-        windowSize = new int[] { 3, 3, 3 };
+        if (config.Window.Count == 0 || config.Paytable.Count == 0 || config.Lines.Count == 0)
+        {
+            throw new InvalidOperationException("slot_machine section must define window, paytable and lines.");
+        }
+        if (config.Window.Count != reelsData.Count)
+        {
+            throw new InvalidOperationException("slot_machine.window size must match reel count.");
+        }
 
+        windowSize = config.Window.ToArray();
         reels = reelsData;
         reelsLen = new int[reels.Count];
         for (int i = 0; i < reels.Count; i++)
@@ -29,44 +35,26 @@ public class Slot
             reelsLen[i] = reels[i].Count;
         }
 
-        // Calculate cycle
         cycle = 1;
         foreach (int len in reelsLen)
         {
             cycle *= len;
         }
 
-        // Parse paytable (using array for faster indexed access)
-        paytable = new int[][]
+        int maxSymbol = config.Paytable.Keys.Max();
+        paytable = new int[maxSymbol + 1][];
+        for (int i = 0; i < paytable.Length; i++)
         {
-            new int[] { 0, 50 },
-            new int[] { 0, 0 },
-            new int[] { 0, 30 },
-            new int[] { 0, 20 },
-            new int[] { 0, 16 },
-            new int[] { 0, 16 },
-            new int[] { 0, 4 },
-            new int[] { 0, 4 },
-            new int[] { 0, 4 },
-            new int[] { 0, 1 }
-        };
-        
-
-        // Wild and scatter icons (hard-coded)
-        iconWild = new HashSet<int> { 0 };
-        iconScatter = new HashSet<int> { 1 };
-
-        // Lines (hard-coded)
-        linesBase = new List<List<int>>
+            paytable[i] = Array.Empty<int>();
+        }
+        foreach (var kvp in config.Paytable)
         {
-            new List<int> { 0, 0, 0 },
-            new List<int> { 1, 1, 1 },
-            new List<int> { 2, 2, 2 },
-            new List<int> { 0, 1, 2 },
-            new List<int> { 2, 1, 0 }
-        };
+            paytable[kvp.Key] = kvp.Value.ToArray();
+        }
 
-        cntLine = linesBase.Count;
+        iconWild = config.IconWild.ToHashSet();
+        iconScatter = config.IconScatter.ToHashSet();
+        linesBase = config.Lines;
         lines = new List<List<int>>();
         GetFlattenLines();
     }
@@ -89,7 +77,6 @@ public class Slot
     {
         List<int> result = new();
 
-        // Calculate indices for multi-dimensional array
         long temp = index;
         for (int i = 0; i < reelsLen.Length; i++)
         {
@@ -189,7 +176,7 @@ public class Slot
             var (maxLen, gameIcon, combination) = GetWinningCombination(line, window);
 
             int lineWin = 0;
-            if (maxLen > 0)
+            if (maxLen > 0 && gameIcon < paytable.Length && maxLen - 1 < paytable[gameIcon].Length)
             {
                 lineWin = paytable[gameIcon][maxLen - 1];
             }
@@ -219,7 +206,7 @@ public class Slot
     {
         if (index == null)
         {
-            index = new Random().Next((int)cycle);
+            index = Random.Shared.NextInt64(cycle);
         }
 
         var indexList = GetIndex(index.Value);

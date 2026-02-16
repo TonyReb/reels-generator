@@ -18,10 +18,10 @@ public class Game
     private double rtp;
     private double hitFrequency;
 
-    public Game(List<List<int>> reels)
+    public Game(List<List<int>> reels, int configuredSpinNumber, SlotMachineConfig slotConfig)
     {
-        spinNumber = 1000000;
-        slot = new Slot(reels);
+        spinNumber = configuredSpinNumber;
+        slot = new Slot(reels, slotConfig);
 
         baseGameWin = 0;
         freeGameWin = 0;
