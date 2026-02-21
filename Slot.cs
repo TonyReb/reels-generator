@@ -9,12 +9,18 @@ public class Slot
     private int[] windowSize;
     private List<List<int>> reels;
     private int[] reelsLen;
+    private long[] divisors;
+    private int[] indexBuffer;
+    private int[] windowBuffer;
     private long cycle;
     private int[][] paytable;
     private HashSet<int> iconWild;
     private HashSet<int> iconScatter;
-    private List<List<int>> linesBase;
-    private List<List<int>> lines;
+    private bool[] isWildSymbol;
+    private bool[] isScatterSymbol;
+    private int[][] lines;
+    private readonly Random rng;
+    private static readonly List<WinningCombinationInfo> EmptyWinningCombinations = new();
 
     public Slot(List<List<int>> reelsData, SlotMachineConfig config)
     {
@@ -35,11 +41,29 @@ public class Slot
             reelsLen[i] = reels[i].Count;
         }
 
+        divisors = new long[reelsLen.Length];
         cycle = 1;
         foreach (int len in reelsLen)
         {
             cycle *= len;
         }
+        for (int i = 0; i < reelsLen.Length; i++)
+        {
+            long divisor = 1;
+            for (int j = i + 1; j < reelsLen.Length; j++)
+            {
+                divisor *= reelsLen[j];
+            }
+            divisors[i] = divisor;
+        }
+
+        indexBuffer = new int[reelsLen.Length];
+        int windowCells = 0;
+        for (int i = 0; i < windowSize.Length; i++)
+        {
+            windowCells += windowSize[i];
+        }
+        windowBuffer = new int[windowCells];
 
         int maxSymbol = config.Paytable.Keys.Max();
         paytable = new int[maxSymbol + 1][];
@@ -54,76 +78,89 @@ public class Slot
 
         iconWild = config.IconWild.ToHashSet();
         iconScatter = config.IconScatter.ToHashSet();
-        linesBase = config.Lines;
-        lines = new List<List<int>>();
-        GetFlattenLines();
+        isWildSymbol = BuildFlags(iconWild, paytable.Length);
+        isScatterSymbol = BuildFlags(iconScatter, paytable.Length);
+        lines = BuildFlattenLines(config.Lines);
+        rng = Random.Shared;
     }
 
-    private void GetFlattenLines()
+    private static bool[] BuildFlags(HashSet<int> symbols, int size)
     {
-        lines.Clear();
-        foreach (var line in linesBase)
+        var flags = new bool[size];
+        foreach (var symbol in symbols)
         {
-            var flattenLine = new List<int>();
+            if (symbol >= 0 && symbol < size)
+            {
+                flags[symbol] = true;
+            }
+        }
+
+        return flags;
+    }
+
+    private int[][] BuildFlattenLines(List<List<int>> linesBase)
+    {
+        var flattenLines = new int[linesBase.Count][];
+        for (int lineIndex = 0; lineIndex < linesBase.Count; lineIndex++)
+        {
+            var line = linesBase[lineIndex];
+            var flattenLine = new int[line.Count];
             for (int i = 0; i < line.Count; i++)
             {
-                flattenLine.Add(i * windowSize[i] + line[i]);
+                flattenLine[i] = i * windowSize[i] + line[i];
             }
-            lines.Add(flattenLine);
+            flattenLines[lineIndex] = flattenLine;
         }
+
+        return flattenLines;
     }
 
-    private List<int> GetIndex(long index)
+    private void FillIndexBuffer(long index)
     {
-        List<int> result = new();
-
         long temp = index;
         for (int i = 0; i < reelsLen.Length; i++)
         {
-            long divisor = 1;
-            for (int j = i + 1; j < reelsLen.Length; j++)
-            {
-                divisor *= reelsLen[j];
-            }
-            result.Add((int)(temp / divisor));
-            temp %= divisor;
+            indexBuffer[i] = (int)(temp / divisors[i]);
+            temp %= divisors[i];
         }
-
-        return result;
     }
 
-    private List<int> GetWindow(List<int> index)
+    private void FillWindowBuffer()
     {
-        List<int> window = new();
-        for (int i = 0; i < index.Count; i++)
+        int outputIndex = 0;
+        for (int i = 0; i < indexBuffer.Length; i++)
         {
             for (int offset = 0; offset < windowSize[i]; offset++)
             {
-                int reelIndex = (index[i] + offset) % reelsLen[i];
-                window.Add(reels[i][reelIndex]);
+                int reelIndex = (indexBuffer[i] + offset) % reelsLen[i];
+                windowBuffer[outputIndex++] = reels[i][reelIndex];
             }
         }
-        return window;
     }
 
-    private (int, int) CheckCombination(List<int> combination)
+    private (int, int) CheckCombination(int[] line, int[] window)
     {
         int maxLen = 0;
-        int gameIcon = combination[0];
+        int gameIcon = window[line[0]];
 
-        for (int i = 1; i < combination.Count; i++)
+        for (int i = 1; i < line.Length; i++)
         {
-            int icon = combination[i];
+            int icon = window[line[i]];
 
-            if (iconScatter.Contains(gameIcon))
+            bool gameIconIsScatter = gameIcon >= 0 && gameIcon < isScatterSymbol.Length && isScatterSymbol[gameIcon];
+            bool gameIconIsWild = gameIcon >= 0 && gameIcon < isWildSymbol.Length && isWildSymbol[gameIcon];
+            bool iconIsScatter = icon >= 0 && icon < isScatterSymbol.Length && isScatterSymbol[icon];
+            bool iconIsWild = icon >= 0 && icon < isWildSymbol.Length && isWildSymbol[icon];
+
+            if (gameIconIsScatter)
             {
-                if (!iconScatter.Contains(icon))
+                if (!iconIsScatter)
                 {
                     break;
                 }
             }
 
-            if (iconWild.Contains(gameIcon) && !iconWild.Contains(icon) && !iconScatter.Contains(icon))
+            if (gameIconIsWild && !iconIsWild && !iconIsScatter)
             {
                 gameIcon = icon;
             }
@@ -132,7 +169,7 @@ public class Slot
             {
                 maxLen++;
             }
-            else if (iconWild.Contains(icon))
+            else if (iconIsWild)
             {
                 maxLen++;
             }
@@ -145,18 +182,6 @@ public class Slot
         return (maxLen, gameIcon);
     }
 
-    private (int, int, List<int>) GetWinningCombination(List<int> line, List<int> window)
-    {
-        List<int> combination = new();
-        foreach (int index in line)
-        {
-            combination.Add(window[index]);
-        }
-
-        var (maxLen, gameIcon) = CheckCombination(combination);
-        return (maxLen, gameIcon, combination);
-    }
-
     public class WinningCombinationInfo
     {
         public int Line { get; set; }
@@ -165,20 +190,42 @@ public class Slot
         public List<int> Combination { get; set; } = new();
     }
 
-    public (int, List<WinningCombinationInfo>) GetWin(List<int> window)
+    public (int, List<WinningCombinationInfo>) GetWin(int[] window, bool includeWinningCombinations)
     {
-        int win = 0;
-        List<WinningCombinationInfo> winningCombinations = new();
+        if (!includeWinningCombinations)
+        {
+            int fastWin = 0;
+            for (int lineIndex = 0; lineIndex < lines.Length; lineIndex++)
+            {
+                var line = lines[lineIndex];
+                var (maxLen, gameIcon) = CheckCombination(line, window);
+                if (maxLen > 0 && gameIcon < paytable.Length && maxLen - 1 < paytable[gameIcon].Length)
+                {
+                    fastWin += paytable[gameIcon][maxLen - 1];
+                }
+            }
 
-        for (int lineIndex = 0; lineIndex < lines.Count; lineIndex++)
+            return (fastWin, EmptyWinningCombinations);
+        }
+
+        int win = 0;
+        var winningCombinations = new List<WinningCombinationInfo>(lines.Length);
+
+        for (int lineIndex = 0; lineIndex < lines.Length; lineIndex++)
         {
             var line = lines[lineIndex];
-            var (maxLen, gameIcon, combination) = GetWinningCombination(line, window);
+            var (maxLen, gameIcon) = CheckCombination(line, window);
 
             int lineWin = 0;
             if (maxLen > 0 && gameIcon < paytable.Length && maxLen - 1 < paytable[gameIcon].Length)
             {
                 lineWin = paytable[gameIcon][maxLen - 1];
+            }
+
+            var combination = new List<int>(line.Length);
+            for (int i = 0; i < line.Length; i++)
+            {
+                combination.Add(window[line[i]]);
             }
 
             winningCombinations.Add(new WinningCombinationInfo
@@ -195,6 +242,19 @@ public class Slot
         return (win, winningCombinations);
     }
 
+    public int SpinBaseGameWin(long? index = null)
+    {
+        if (index == null)
+        {
+            index = rng.NextInt64(cycle);
+        }
+
+        FillIndexBuffer(index.Value);
+        FillWindowBuffer();
+        var (win, _) = GetWin(windowBuffer, includeWinningCombinations: false);
+        return win;
+    }
+
     public class SpinResult
     {
         public long Index { get; set; }
@@ -202,17 +262,16 @@ public class Slot
         public List<WinningCombinationInfo> WinningCombinations { get; set; } = new();
     }
 
-    public SpinResult Spin(long? index = null)
+    public SpinResult Spin(long? index = null, bool includeWinningCombinations = true)
     {
         if (index == null)
         {
-            index = Random.Shared.NextInt64(cycle);
+            index = rng.NextInt64(cycle);
         }
 
-        var indexList = GetIndex(index.Value);
-        var window = GetWindow(indexList);
-
-        var (win, winningCombinations) = GetWin(window);
+        FillIndexBuffer(index.Value);
+        FillWindowBuffer();
+        var (win, winningCombinations) = GetWin(windowBuffer, includeWinningCombinations);
 
         var result = new SpinResult
         {

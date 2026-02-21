@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("ReelsGenerator")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+6a8c764f76f82483bbf206d5f8242fe6e38cecde")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+a26eef74c0a73f3e84d25c8754261eb0b25764cf")]
 [assembly: System.Reflection.AssemblyProductAttribute("ReelsGenerator")]
 [assembly: System.Reflection.AssemblyTitleAttribute("ReelsGenerator")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

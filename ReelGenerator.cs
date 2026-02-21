@@ -102,8 +102,8 @@ public class ReelGenerator
             List<Stack> bucket = specialSymbols.Contains(symbol)
                 ? specialStacks
                 : highSymbols.Contains(symbol)
-                    ? (highStacks.ContainsKey(0) ? highStacks[0] : new List<Stack>())
-                    : (lowStacks.ContainsKey(0) ? lowStacks[0] : new List<Stack>());
+                    ? (highStacks.ContainsKey(0) ? highStacks[0] : [])
+                    : (lowStacks.ContainsKey(0) ? lowStacks[0] : []);
 
             if (specialSymbols.Contains(symbol))
             {

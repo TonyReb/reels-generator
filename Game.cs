@@ -33,9 +33,12 @@ public class Game
         hitFrequency = 0;
     }
 
-    public void Run()
+    public void Run(bool collectWins = false)
     {
-        wins.Clear();
+        if (collectWins)
+        {
+            wins.Clear();
+        }
         baseGameWin = 0;
         freeGameWin = 0;
         totalWin = 0;
@@ -43,26 +46,18 @@ public class Game
 
         for (int i = 0; i < spinNumber; i++)
         {
-            var spinResult = slot.Spin(null);
-
-            int baseGameWinValue = 0;
-            if (spinResult.Result.ContainsKey("base_game_win"))
-            {
-                baseGameWinValue = spinResult.Result["base_game_win"];
-            }
-
+            int baseGameWinValue = slot.SpinBaseGameWin();
             int freeGameWinValue = 0;
-            if (spinResult.Result.ContainsKey("free_game_win"))
-            {
-                freeGameWinValue = spinResult.Result["free_game_win"];
-            }
 
             int totalWinValue = baseGameWinValue + freeGameWinValue;
 
             baseGameWin += baseGameWinValue;
             freeGameWin += freeGameWinValue;
             totalWin += totalWinValue;
-            wins.Add(totalWinValue);
+            if (collectWins)
+            {
+                wins.Add(totalWinValue);
+            }
 
             if (totalWinValue > 0)
             {

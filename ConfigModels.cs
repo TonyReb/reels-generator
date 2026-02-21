@@ -22,6 +22,7 @@ public class GeneticAlgorithmSection
     public int TournamentK { get; set; }
     public bool Maximize { get; set; }
     public int Seed { get; set; }
+    public bool VerboseProgress { get; set; }
 }
 
 public class SimulationSection
@@ -32,6 +33,11 @@ public class SimulationSection
 }
 
 public class ReelGenerationSection
+{
+    public List<ReelConfig> Reels { get; set; } = new();
+}
+
+public class ReelConfig
 {
     public int Radius { get; set; }
     public int Seed { get; set; }

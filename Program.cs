@@ -19,10 +19,6 @@ var deserializer = new DeserializerBuilder()
 var appConfig = deserializer.Deserialize<AppConfig>(yaml)
     ?? throw new InvalidOperationException("Failed to parse YAML config.");
 
-if (appConfig.ReelGeneration.SymbolStacks.Low.Count == 0 || appConfig.ReelGeneration.SymbolStacks.High.Count == 0)
-{
-    throw new InvalidOperationException("YAML config must define non-empty low/high symbol stacks.");
-}
 if (appConfig.Simulation.SpinNumber <= 0)
 {
     throw new InvalidOperationException("simulation.spin_number must be greater than 0.");
@@ -30,6 +26,27 @@ if (appConfig.Simulation.SpinNumber <= 0)
 if (appConfig.SlotMachine.Window.Count == 0 || appConfig.SlotMachine.Lines.Count == 0 || appConfig.SlotMachine.Paytable.Count == 0)
 {
     throw new InvalidOperationException("slot_machine.window, slot_machine.lines and slot_machine.paytable must be defined.");
+}
+if (appConfig.ReelGeneration.Reels.Count == 0)
+{
+    throw new InvalidOperationException("reel_generation.reels must be defined.");
+}
+if (appConfig.ReelGeneration.Reels.Count != appConfig.SlotMachine.Window.Count)
+{
+    throw new InvalidOperationException("reel_generation.reels count must match slot_machine.window length.");
+}
+for (int i = 0; i < appConfig.ReelGeneration.Reels.Count; i++)
+{
+    var reel = appConfig.ReelGeneration.Reels[i];
+    if (reel.Radius <= 0)
+    {
+        throw new InvalidOperationException($"reel_generation.reels[{i}].radius must be greater than 0.");
+    }
+
+    if (reel.SymbolStacks.Low.Count == 0 || reel.SymbolStacks.High.Count == 0)
+    {
+        throw new InvalidOperationException($"reel_generation.reels[{i}] must define non-empty symbol_stacks.low/high.");
+    }
 }
 
 var gaConfig = new GAConfig
@@ -43,7 +60,8 @@ var gaConfig = new GAConfig
     Elitism = appConfig.GeneticAlgorithm.Elitism,
     TournamentK = appConfig.GeneticAlgorithm.TournamentK,
     Maximize = appConfig.GeneticAlgorithm.Maximize,
-    Seed = appConfig.GeneticAlgorithm.Seed
+    Seed = appConfig.GeneticAlgorithm.Seed,
+    VerboseProgress = appConfig.GeneticAlgorithm.VerboseProgress
 };
 
 Console.WriteLine("Starting Genetic Algorithm for Slot Reel Generation...");
@@ -58,12 +76,9 @@ Console.WriteLine("-------------------------------------------");
 
 var ga = new GeneticAlgorithm(
     gaConfig,
-    appConfig.ReelGeneration.SymbolStacks.Low,
-    appConfig.ReelGeneration.SymbolStacks.High,
+    appConfig.ReelGeneration.Reels,
     appConfig.Simulation.TargetRtp,
     appConfig.Simulation.TargetHitFrequency,
-    appConfig.ReelGeneration.Radius,
-    appConfig.ReelGeneration.Seed,
     appConfig.Simulation.SpinNumber,
     appConfig.SlotMachine);
 var result = ga.Run();
