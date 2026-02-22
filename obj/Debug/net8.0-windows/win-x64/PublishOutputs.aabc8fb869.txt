@@ -1,0 +1,7 @@
+E:\reels\reels-generator\pub\win-x64\ReelsGenerator.exe
+E:\reels\reels-generator\pub\win-x64\config.yml
+E:\reels\reels-generator\pub\win-x64\ReelsGenerator.dll
+E:\reels\reels-generator\pub\win-x64\ReelsGenerator.deps.json
+E:\reels\reels-generator\pub\win-x64\ReelsGenerator.runtimeconfig.json
+E:\reels\reels-generator\pub\win-x64\ReelsGenerator.pdb
+E:\reels\reels-generator\pub\win-x64\YamlDotNet.dll

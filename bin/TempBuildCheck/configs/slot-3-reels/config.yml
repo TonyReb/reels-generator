@@ -1,0 +1,88 @@
+genetic_algorithm:
+  pop_size: 8
+  generations: 4
+  crossover_rate: 0.9
+  mutation_rate: 0.06
+  crossover_alpha: 0.5
+  mutation_sigma: 4.0
+  elitism: 2
+  tournament_k: 3
+  maximize: false
+  seed: 73
+
+simulation:
+  spin_number: 50000
+  target_rtp: 0.42
+  target_hit_frequency: 0.22
+
+reel_generation:
+  reels:
+    - radius: 2
+      seed: 11
+      symbol_stacks:
+        low:
+          0: [1, 0, 0, 0]
+          1: [1, 0, 0, 0]
+          2: [3, 4, 2, 0]
+          3: [4, 3, 2, 0]
+          4: [5, 2, 1, 0]
+          5: [6, 2, 1, 0]
+        high:
+          0: [3, 0, 0, 0]
+          1: [3, 0, 0, 0]
+          2: [12, 10, 8, 4]
+          3: [12, 10, 8, 4]
+          4: [12, 10, 8, 4]
+          5: [12, 10, 8, 4]
+    - radius: 2
+      seed: 12
+      symbol_stacks:
+        low:
+          0: [1, 0, 0, 0]
+          1: [1, 0, 0, 0]
+          2: [3, 4, 2, 0]
+          3: [4, 3, 2, 0]
+          4: [5, 2, 1, 0]
+          5: [6, 2, 1, 0]
+        high:
+          0: [3, 0, 0, 0]
+          1: [3, 0, 0, 0]
+          2: [12, 10, 8, 4]
+          3: [12, 10, 8, 4]
+          4: [12, 10, 8, 4]
+          5: [12, 10, 8, 4]
+    - radius: 2
+      seed: 13
+      symbol_stacks:
+        low:
+          0: [1, 0, 0, 0]
+          1: [1, 0, 0, 0]
+          2: [3, 4, 2, 0]
+          3: [4, 3, 2, 0]
+          4: [5, 2, 1, 0]
+          5: [6, 2, 1, 0]
+        high:
+          0: [3, 0, 0, 0]
+          1: [3, 0, 0, 0]
+          2: [12, 10, 8, 4]
+          3: [12, 10, 8, 4]
+          4: [12, 10, 8, 4]
+          5: [12, 10, 8, 4]
+
+slot_machine:
+  window: [3, 3, 3]
+  icon_wild: [0]
+  icon_scatter: [1]
+  paytable:
+    0: [0, 5, 25]
+    1: [0, 0, 0]
+    2: [0, 4, 18]
+    3: [0, 3, 12]
+    4: [0, 2, 8]
+    5: [0, 2, 8]
+  lines:
+    - [0, 0, 0]
+    - [1, 1, 1]
+    - [2, 2, 2]
+    - [0, 1, 2]
+    - [2, 1, 0]

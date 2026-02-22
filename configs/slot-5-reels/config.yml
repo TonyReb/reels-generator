@@ -1,21 +1,32 @@
-# Genetic Algorithm Configuration
+﻿# Genetic Algorithm Configuration
 genetic_algorithm:
-  pop_size: 10
-  generations: 10
+  pop_size: 64
+  generations: 160
   crossover_rate: 0.9
-  mutation_rate: 0.02
-  crossover_alpha: 0.5
-  mutation_sigma: 3.0
-  elitism: 2
+  mutation_rate: 0.06
+  crossover_alpha: 0.4
+  mutation_sigma: 2.4
+  elitism: 3
   tournament_k: 3
-  maximize: false
-  seed: 42
+  seed: 73
 
 # Simulation Parameters
 simulation:
   spin_number: 1000000
   target_rtp: 0.45
   target_hit_frequency: 0.10
+  target_bonus_game_frequency: 0.01
+  symbol_rtp_unevenness_weight: 0.1
+  symbol_rtp_targets:
+    0: 0.05
+    2: 0.05
+    3: 0.05
+    4: 0.05
+    5: 0.05
+    6: 0.05
+    7: 0.05
+    8: 0.05
+    9: 0.05
 
 # Reel Generation Configuration
 reel_generation:

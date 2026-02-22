@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.Linq;
 
 namespace ReelsGenerator;
@@ -13,17 +14,17 @@ public class GAConfig
     public float MutationRate { get; set; } = 0.02f;
     public int Elitism { get; set; } = 2;
     public int TournamentK { get; set; } = 3;
-    public bool Maximize { get; set; } = true;
     public int Seed { get; set; } = 123;
     public float CrossoverAlpha { get; set; } = 0.5f;
     public double MutationSigma { get; set; } = 3.0;
     public bool VerboseProgress { get; set; } = false;
+    public double SymbolRtpUnevennessWeight { get; set; } = 0.1;
 }
 
 public class GAResult
 {
     public Individual? BestIndividual { get; set; }
-    public (double, double, double) BestFitness { get; set; }
+    public FitnessBreakdown BestFitness { get; set; }
     public List<double> HistoryBest { get; set; } = new();
 }
 
@@ -33,8 +34,20 @@ public class Individual
     public List<List<int>> Reels { get; set; } = new();
 }
 
+public readonly record struct FitnessBreakdown(
+    double Total,
+    double RtpDelta,
+    double HitFrequencyDelta,
+    double BonusGameFrequencyDelta,
+    double SymbolRtpTargetErrorPenalty,
+    double SymbolRtpTargetError,
+    double Rtp,
+    double HitFrequency,
+    double BonusGameFrequency);
+
 public class GeneticAlgorithm
 {
+    private const int MaxGenerateAttemptsPerReel = 250;
     private List<Dictionary<int, List<int>>> LOWS;
     private List<Dictionary<int, List<int>>> HIGHS;
     private List<int[]> SYMBOLS_BY_REEL;
@@ -47,8 +60,12 @@ public class GeneticAlgorithm
     private float CROSSOVER_ALPHA;
     private double TARGET_RTP;
     private double TARGET_HIT_FREQUENCY;
+    private double TARGET_BONUS_GAME_FREQUENCY;
+    private Dictionary<int, double> SYMBOL_RTP_TARGETS;
     private int SPIN_NUMBER;
     private SlotMachineConfig SLOT_CONFIG;
+    private IGameEngineFactory GAME_FACTORY;
+    private ISlotEngineFactory SLOT_FACTORY;
 
     private GAConfig config;
     private Random rng;
@@ -58,8 +75,12 @@ public class GeneticAlgorithm
         List<ReelConfig> reelConfigs,
         double targetRtp,
         double targetHitFrequency,
+        double targetBonusGameFrequency,
+        IReadOnlyDictionary<int, double> symbolRtpTargets,
         int spinNumber,
-        SlotMachineConfig slotConfig)
+        SlotMachineConfig slotConfig,
+        IGameEngineFactory gameFactory,
+        ISlotEngineFactory slotFactory)
     {
         config = gaConfig;
         rng = new Random(config.Seed);
@@ -103,26 +124,90 @@ public class GeneticAlgorithm
         REEL_COUNT = reelConfigs.Count;
         TARGET_RTP = targetRtp;
         TARGET_HIT_FREQUENCY = targetHitFrequency;
+        TARGET_BONUS_GAME_FREQUENCY = targetBonusGameFrequency;
+        SYMBOL_RTP_TARGETS = symbolRtpTargets
+            .OrderBy(x => x.Key)
+            .ToDictionary(x => x.Key, x => x.Value);
         SPIN_NUMBER = spinNumber;
         SLOT_CONFIG = slotConfig;
+        GAME_FACTORY = gameFactory;
+        SLOT_FACTORY = slotFactory;
 
         MUT_SIGMA = config.MutationSigma;
         CROSSOVER_ALPHA = config.CrossoverAlpha;
     }
 
-    private (double, double, double) FitnessSphere(Individual ind)
+    private FitnessBreakdown FitnessSphere(Individual ind)
     {
-        Game game = new(ind.Reels, SPIN_NUMBER, SLOT_CONFIG);
+        IGameEngine game = GAME_FACTORY.Create(ind.Reels, SPIN_NUMBER, SLOT_CONFIG, SLOT_FACTORY);
         game.Run();
         var (rtp, hitFrequency) = game.GetStats();
+        double bonusGameFrequency = game.GetBonusGameFrequency();
+        var winSums = game.GetWinningCombinationWinSums();
+        double symbolRtpTargetError = GetSymbolRtpTargetError(winSums, SYMBOL_RTP_TARGETS, SPIN_NUMBER);
+        double symbolRtpTargetErrorPenalty = config.SymbolRtpUnevennessWeight * symbolRtpTargetError;
+        double rtpDelta = RelativeDelta(TARGET_RTP, rtp);
+        double hitDelta = RelativeDelta(TARGET_HIT_FREQUENCY, hitFrequency);
+        double bonusDelta = RelativeDelta(TARGET_BONUS_GAME_FREQUENCY, bonusGameFrequency);
 
-        double fitness = Math.Abs(TARGET_RTP - rtp) / (Math.Abs(TARGET_RTP) + Math.Abs(rtp)) +
-                         Math.Abs(TARGET_HIT_FREQUENCY - hitFrequency) / (Math.Abs(TARGET_HIT_FREQUENCY) + Math.Abs(hitFrequency));
+        double fitness =
+            rtpDelta +
+            hitDelta +
+            bonusDelta +
+            symbolRtpTargetErrorPenalty;
 
-        return (fitness, rtp, hitFrequency);
+        return new FitnessBreakdown(
+            Total: fitness,
+            RtpDelta: rtpDelta,
+            HitFrequencyDelta: hitDelta,
+            BonusGameFrequencyDelta: bonusDelta,
+            SymbolRtpTargetErrorPenalty: symbolRtpTargetErrorPenalty,
+            SymbolRtpTargetError: symbolRtpTargetError,
+            Rtp: rtp,
+            HitFrequency: hitFrequency,
+            BonusGameFrequency: bonusGameFrequency);
     }
 
-    private Individual TournamentSelect(List<Individual> population, List<(double, double, double)> fitnesses)
+    private static double RelativeDelta(double target, double actual)
+    {
+        double denominator = Math.Abs(target) + Math.Abs(actual);
+        if (denominator < 1e-12)
+        {
+            return 0;
+        }
+
+        return Math.Abs(target - actual) / denominator;
+    }
+
+    private static double GetSymbolRtpTargetError(
+        IReadOnlyDictionary<(int Symbol, int Length), long> winSums,
+        IReadOnlyDictionary<int, double> symbolRtpTargets,
+        int spinNumber)
+    {
+        if (spinNumber <= 0 || symbolRtpTargets.Count == 0)
+        {
+            return 0;
+        }
+
+        var symbolWinSums = new Dictionary<int, long>();
+        foreach (var kvp in winSums)
+        {
+            symbolWinSums.TryGetValue(kvp.Key.Symbol, out long current);
+            symbolWinSums[kvp.Key.Symbol] = current + kvp.Value;
+        }
+
+        double error = 0;
+        foreach (var target in symbolRtpTargets)
+        {
+            symbolWinSums.TryGetValue(target.Key, out long sumWin);
+            double actual = sumWin / (double)spinNumber;
+            error += RelativeDelta(target.Value, actual);
+        }
+
+        return error / symbolRtpTargets.Count;
+    }
+
+    private Individual TournamentSelect(List<Individual> population, List<FitnessBreakdown> fitnesses)
     {
         int bestIdx = -1;
 
@@ -136,9 +221,7 @@ public class GeneticAlgorithm
             }
             else
             {
-                bool isBetter = config.Maximize
-                    ? fitnesses[idx].Item1 > fitnesses[bestIdx].Item1
-                    : fitnesses[idx].Item1 < fitnesses[bestIdx].Item1;
+                bool isBetter = fitnesses[idx].Total < fitnesses[bestIdx].Total;
 
                 if (isBetter)
                 {
@@ -150,9 +233,9 @@ public class GeneticAlgorithm
         return population[bestIdx];
     }
 
-    private List<(double, double, double)> EvaluatePopulation(List<Individual> population, bool showProgress)
+    private List<FitnessBreakdown> EvaluatePopulation(List<Individual> population, bool showProgress)
     {
-        var fitnesses = new List<(double, double, double)>(population.Count);
+        var fitnesses = new List<FitnessBreakdown>(population.Count);
         for (int i = 0; i < population.Count; i++)
         {
             if (showProgress)
@@ -199,6 +282,113 @@ public class GeneticAlgorithm
         return clone;
     }
 
+    private static void PrintBestIndividualItems(Individual individual, string header)
+    {
+        Console.WriteLine(header);
+        for (int reelIndex = 0; reelIndex < individual.Items.Count; reelIndex++)
+        {
+            var item = individual.Items[reelIndex];
+            foreach (var kvp in item)
+            {
+                Console.WriteLine($"{reelIndex + 1}, {kvp.Key}, {string.Join(", ", kvp.Value)}");
+            }
+            Console.WriteLine();
+        }
+    }
+
+    private static void PrintBestIndividualReels(Individual individual)
+    {
+        Console.WriteLine("Best Individual Reels:");
+        for (int i = 0; i < individual.Reels.Count; i++)
+        {
+            Console.WriteLine($"Reel {i + 1}: {string.Join(", ", individual.Reels[i])}");
+        }
+        Console.WriteLine();
+    }
+
+    private void PrintFitnessComponentsTable(FitnessBreakdown current)
+    {
+        string[] header = ["Metric", "Target", "Current", "Fitness"];
+        string[][] rows =
+        [
+            [
+                "RTP",
+                FormatMetricValue(TARGET_RTP),
+                FormatMetricValue(current.Rtp),
+                FormatMetricValue(current.RtpDelta)
+            ],
+            [
+                "Hit Frequency",
+                FormatMetricValue(TARGET_HIT_FREQUENCY),
+                FormatMetricValue(current.HitFrequency),
+                FormatMetricValue(current.HitFrequencyDelta)
+            ],
+            [
+                "Bonus game frequency",
+                FormatMetricValue(TARGET_BONUS_GAME_FREQUENCY),
+                FormatMetricValue(current.BonusGameFrequency),
+                FormatMetricValue(current.BonusGameFrequencyDelta)
+            ],
+            [
+                "symbol_rtp_target_error",
+                "-",
+                FormatMetricValue(current.SymbolRtpTargetError),
+                FormatMetricValue(current.SymbolRtpTargetErrorPenalty)
+            ]
+        ];
+
+        int[] widths = new int[header.Length];
+        for (int i = 0; i < header.Length; i++)
+        {
+            widths[i] = header[i].Length;
+        }
+
+        for (int r = 0; r < rows.Length; r++)
+        {
+            for (int c = 0; c < rows[r].Length; c++)
+            {
+                widths[c] = Math.Max(widths[c], rows[r][c].Length);
+            }
+        }
+
+        Console.WriteLine(RenderTableRow(header, widths));
+        Console.WriteLine(RenderTableSeparator(widths));
+        for (int r = 0; r < rows.Length; r++)
+        {
+            Console.WriteLine(RenderTableRow(rows[r], widths));
+        }
+    }
+
+    private static string FormatMetricValue(double value)
+    {
+        return value.ToString("0.0000", CultureInfo.CurrentCulture);
+    }
+
+    private static string RenderTableRow(string[] row, int[] widths)
+    {
+        return string.Join(" | ", row.Select((cell, i) => cell.PadRight(widths[i])));
+    }
+
+    private static string RenderTableSeparator(int[] widths)
+    {
+        return string.Join("-+-", widths.Select(w => new string('-', w)));
+    }
+
+    private void PrintWinningCombinationCountsForIndividual(Individual individual, string header)
+    {
+        IGameEngine game = GAME_FACTORY.Create(individual.Reels, SPIN_NUMBER, SLOT_CONFIG, SLOT_FACTORY);
+        game.Run();
+        var counts = game.GetWinningCombinationCounts();
+        var winSums = game.GetWinningCombinationWinSums();
+        Console.WriteLine(header);
+        var tableLines = WinningCombinationsTableFormatter.Format(counts, winSums, SPIN_NUMBER, SLOT_CONFIG.Lines.Count);
+        foreach (var line in tableLines)
+        {
+            Console.WriteLine(line);
+        }
+        Console.WriteLine();
+    }
+
     private ReelGenerator GetReelGenerator(int reelIndex) => REEL_GENERATORS[reelIndex];
 
     private Dictionary<int, List<int>> BlendReelItem(Individual a, Individual b, int reelIndex)
@@ -237,6 +427,7 @@ public class GeneticAlgorithm
         for (int reelIndex = 0; reelIndex < REEL_COUNT; reelIndex++)
         {
             bool generated = false;
+            int attempts = 0;
             while (!generated)
             {
                 var item1 = BlendReelItem(a, b, reelIndex);
@@ -254,6 +445,10 @@ public class GeneticAlgorithm
                     c2.Reels.Add(reel2);
                     generated = true;
                 }
+                else if (++attempts >= MaxGenerateAttemptsPerReel)
+                {
+                    throw new InvalidOperationException($"Failed to generate reel {reelIndex + 1} during crossover after {MaxGenerateAttemptsPerReel} attempts.");
+                }
             }
         }
 
@@ -267,6 +462,7 @@ public class GeneticAlgorithm
         for (int reelIndex = 0; reelIndex < REEL_COUNT; reelIndex++)
         {
             bool generated = false;
+            int attempts = 0;
             while (!generated)
             {
                 var low = LOWS[reelIndex];
@@ -300,6 +496,10 @@ public class GeneticAlgorithm
                     outInd.Reels.Add(reel);
                     generated = true;
                 }
+                else if (++attempts >= MaxGenerateAttemptsPerReel)
+                {
+                    throw new InvalidOperationException($"Failed to generate reel {reelIndex + 1} during mutation after {MaxGenerateAttemptsPerReel} attempts.");
+                }
             }
         }
 
@@ -313,6 +513,7 @@ public class GeneticAlgorithm
         for (int reelIndex = 0; reelIndex < REEL_COUNT; reelIndex++)
         {
             bool generated = false;
+            int attempts = 0;
             while (!generated)
             {
                 var low = LOWS[reelIndex];
@@ -340,6 +541,11 @@ public class GeneticAlgorithm
                 else
                 {
                     Console.Write(".");
+                }
+
+                if (!generated && ++attempts >= MaxGenerateAttemptsPerReel)
+                {
+                    throw new InvalidOperationException($"Failed to generate reel {reelIndex + 1} for initial population after {MaxGenerateAttemptsPerReel} attempts.");
                 }
             }
         }
@@ -376,9 +582,7 @@ public class GeneticAlgorithm
         int bestIdx = 0;
         for (int i = 1; i < fitnesses.Count; i++)
         {
-            bool isBetter = config.Maximize
-                ? fitnesses[i].Item1 > fitnesses[bestIdx].Item1
-                : fitnesses[i].Item1 < fitnesses[bestIdx].Item1;
+            bool isBetter = fitnesses[i].Total < fitnesses[bestIdx].Total;
 
             if (isBetter)
             {
@@ -388,7 +592,8 @@ public class GeneticAlgorithm
 
         var bestInd = CloneIndividual(population[bestIdx]);
         var bestFit = fitnesses[bestIdx];
-        var history = new List<double> { bestFit.Item1 };
+        var history = new List<double> { bestFit.Total };
+        PrintBestIndividualItems(bestInd, "Current Best Individual Items:");
 
         for (int gen = 0; gen < config.Generations; gen++)
         {
@@ -397,8 +602,7 @@ public class GeneticAlgorithm
             var indexed = Enumerable.Range(0, config.PopSize).ToList();
             indexed.Sort((a, b) =>
             {
-                int cmp = fitnesses[a].Item1.CompareTo(fitnesses[b].Item1);
-                return config.Maximize ? -cmp : cmp;
+                return fitnesses[a].Total.CompareTo(fitnesses[b].Total);
             });
 
             var newPopulation = new List<Individual>();
@@ -443,9 +647,7 @@ public class GeneticAlgorithm
             int curBestIdx = 0;
             for (int i = 1; i < fitnesses.Count; i++)
             {
-                bool isBetter = config.Maximize
-                    ? fitnesses[i].Item1 > fitnesses[curBestIdx].Item1
-                    : fitnesses[i].Item1 < fitnesses[curBestIdx].Item1;
+                bool isBetter = fitnesses[i].Total < fitnesses[curBestIdx].Total;
 
                 if (isBetter)
                 {
@@ -454,23 +656,31 @@ public class GeneticAlgorithm
             }
 
             var curBestFit = fitnesses[curBestIdx];
-            bool isImproved = config.Maximize
-                ? curBestFit.Item1 > bestFit.Item1
-                : curBestFit.Item1 < bestFit.Item1;
+            var previousBestFit = bestFit;
+            bool isImproved = curBestFit.Total < bestFit.Total;
 
             if (isImproved)
             {
                 bestInd = CloneIndividual(population[curBestIdx]);
                 bestFit = curBestFit;
             }
-
+            double fitnessDelta = bestFit.Total - previousBestFit.Total;
             generationStopwatch.Stop();
             Console.WriteLine($"---- Generation {gen} ----");
             Console.WriteLine($"Generation time: {generationStopwatch.Elapsed.TotalSeconds:F2} s");
-            Console.WriteLine($"Best fitness: {bestFit.Item1}");
-            Console.WriteLine($"RTP: {bestFit.Item2}, Hit Frequency: {bestFit.Item3}");
+            Console.WriteLine(
+                $"Best fitness: {bestFit.Total.ToString("0.000000", CultureInfo.CurrentCulture)} " +
+                $"({fitnessDelta.ToString("0.000000", CultureInfo.CurrentCulture)})");
+            Console.WriteLine();
+            PrintFitnessComponentsTable(bestFit);
+            Console.WriteLine();
+            PrintBestIndividualItems(bestInd, "Current Best Individual Items:");
+            Console.WriteLine();
+            PrintBestIndividualReels(bestInd);
+            Console.WriteLine();
+            PrintWinningCombinationCountsForIndividual(bestInd, $"Winning combinations by symbol and length (generation {gen}):");
 
-            history.Add(bestFit.Item1);
+            history.Add(bestFit.Total);
         }
 
         return new GAResult

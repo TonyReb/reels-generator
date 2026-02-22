@@ -1,0 +1,6 @@
+E:\reels\reels-generator\obj\TempBuildCheck\Debug\net8.0-windows\ReelsGenerator.csproj.AssemblyReference.cache
+E:\reels\reels-generator\obj\TempBuildCheck\Debug\net8.0-windows\ReelsGenerator.GeneratedMSBuildEditorConfig.editorconfig
+E:\reels\reels-generator\obj\TempBuildCheck\Debug\net8.0-windows\ReelsGenerator.AssemblyInfoInputs.cache
+E:\reels\reels-generator\obj\TempBuildCheck\Debug\net8.0-windows\ReelsGenerator.AssemblyInfo.cs
+E:\reels\reels-generator\obj\TempBuildCheck\Debug\net8.0-windows\ReelsGenerator.csproj.CoreCompileInputs.cache
+E:\reels\reels-generator\obj\TempBuildCheck\Debug\net8.0-windows\ReelsGenerator.sourcelink.json

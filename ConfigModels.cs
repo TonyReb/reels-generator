@@ -2,6 +2,28 @@ using System.Collections.Generic;
 
 namespace ReelsGenerator;
 
+public class AppConfigRoot
+{
+    public string? DefaultProfile { get; set; }
+    public Dictionary<string, AppConfig> Profiles { get; set; } = new();
+
+    public GeneticAlgorithmSection GeneticAlgorithm { get; set; } = new();
+    public SimulationSection Simulation { get; set; } = new();
+    public ReelGenerationSection ReelGeneration { get; set; } = new();
+    public SlotMachineConfig SlotMachine { get; set; } = new();
+
+    public AppConfig ToSingleConfig()
+    {
+        return new AppConfig
+        {
+            GeneticAlgorithm = GeneticAlgorithm,
+            Simulation = Simulation,
+            ReelGeneration = ReelGeneration,
+            SlotMachine = SlotMachine
+        };
+    }
+}
+
 public class AppConfig
 {
     public GeneticAlgorithmSection GeneticAlgorithm { get; set; } = new();
@@ -20,7 +42,6 @@ public class GeneticAlgorithmSection
     public double MutationSigma { get; set; }
     public int Elitism { get; set; }
     public int TournamentK { get; set; }
-    public bool Maximize { get; set; }
     public int Seed { get; set; }
     public bool VerboseProgress { get; set; }
 }
@@ -30,6 +51,9 @@ public class SimulationSection
     public int SpinNumber { get; set; }
     public double TargetRtp { get; set; }
     public double TargetHitFrequency { get; set; }
+    public double TargetBonusGameFrequency { get; set; }
+    public double SymbolRtpUnevennessWeight { get; set; } = 0.1;
+    public Dictionary<int, double> SymbolRtpTargets { get; set; } = new();
 }
 
 public class ReelGenerationSection

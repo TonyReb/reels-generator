@@ -1,8 +1,23 @@
 using System;
 using System.Collections.Generic;
+using System.DirectoryServices;
 using System.Linq;
 
 namespace ReelsGenerator;
+
+public sealed class SpinResult
+{
+    public int Win { get; set; }
+    public bool BonusGameTriggered { get; set; }
+    public List<WinningCombination> WinningCombinations { get; set; } = new();
+}
+
+public sealed class WinningCombination
+{
+    public int Symbol { get; set; }
+    public int Length { get; set; }
+    public int Win { get; set; }
+}
 
 public class Slot
 {
@@ -20,7 +35,6 @@ public class Slot
     private bool[] isScatterSymbol;
     private int[][] lines;
     private readonly Random rng;
-    private static readonly List<WinningCombinationInfo> EmptyWinningCombinations = new();
 
     public Slot(List<List<int>> reelsData, SlotMachineConfig config)
     {
@@ -38,14 +52,32 @@ public class Slot
         reelsLen = new int[reels.Count];
         for (int i = 0; i < reels.Count; i++)
         {
+            if (reels[i].Count <= 0)
+            {
+                throw new InvalidOperationException($"Reel {i + 1} must contain at least one symbol.");
+            }
             reelsLen[i] = reels[i].Count;
         }
 
         divisors = new long[reelsLen.Length];
         cycle = 1;
-        foreach (int len in reelsLen)
+        try
         {
-            cycle *= len;
+            checked
+            {
+                foreach (int len in reelsLen)
+                {
+                    cycle *= len;
+                }
+            }
+        }
+        catch (OverflowException ex)
+        {
+            throw new InvalidOperationException("Total reel cycle is too large to evaluate.", ex);
+        }
+        if (cycle <= 0)
+        {
+            throw new InvalidOperationException("Total reel cycle must be greater than zero.");
         }
         for (int i = 0; i < reelsLen.Length; i++)
         {
@@ -101,13 +133,31 @@ public class Slot
     private int[][] BuildFlattenLines(List<List<int>> linesBase)
     {
         var flattenLines = new int[linesBase.Count][];
+        var reelOffsets = new int[windowSize.Length];
+        int offset = 0;
+        for (int i = 0; i < windowSize.Length; i++)
+        {
+            reelOffsets[i] = offset;
+            offset += windowSize[i];
+        }
+
         for (int lineIndex = 0; lineIndex < linesBase.Count; lineIndex++)
         {
             var line = linesBase[lineIndex];
+            if (line.Count != windowSize.Length)
+            {
+                throw new InvalidOperationException($"Line {lineIndex} must define {windowSize.Length} rows.");
+            }
+
             var flattenLine = new int[line.Count];
             for (int i = 0; i < line.Count; i++)
             {
-                flattenLine[i] = i * windowSize[i] + line[i];
+                if (line[i] < 0 || line[i] >= windowSize[i])
+                {
+                    throw new InvalidOperationException($"Line {lineIndex}, reel {i + 1} row index {line[i]} is out of range 0..{windowSize[i] - 1}.");
+                }
+
+                flattenLine[i] = reelOffsets[i] + line[i];
             }
             flattenLines[lineIndex] = flattenLine;
         }
@@ -140,7 +190,7 @@ public class Slot
 
     private (int, int) CheckCombination(int[] line, int[] window)
     {
-        int maxLen = 0;
+        int maxLen = 1;
         int gameIcon = window[line[0]];
 
         for (int i = 1; i < line.Length; i++)
@@ -182,104 +232,74 @@ public class Slot
         return (maxLen, gameIcon);
     }
 
-    public class WinningCombinationInfo
+    private SpinResult GetWin(int[] window)
     {
-        public int Line { get; set; }
-        public int Length { get; set; }
-        public int Icon { get; set; }
-        public List<int> Combination { get; set; } = new();
-    }
-
-    public (int, List<WinningCombinationInfo>) GetWin(int[] window, bool includeWinningCombinations)
-    {
-        if (!includeWinningCombinations)
-        {
-            int fastWin = 0;
-            for (int lineIndex = 0; lineIndex < lines.Length; lineIndex++)
-            {
-                var line = lines[lineIndex];
-                var (maxLen, gameIcon) = CheckCombination(line, window);
-                if (maxLen > 0 && gameIcon < paytable.Length && maxLen - 1 < paytable[gameIcon].Length)
-                {
-                    fastWin += paytable[gameIcon][maxLen - 1];
-                }
-            }
-
-            return (fastWin, EmptyWinningCombinations);
-        }
-
-        int win = 0;
-        var winningCombinations = new List<WinningCombinationInfo>(lines.Length);
-
+        var result = new SpinResult();
         for (int lineIndex = 0; lineIndex < lines.Length; lineIndex++)
         {
             var line = lines[lineIndex];
             var (maxLen, gameIcon) = CheckCombination(line, window);
 
             int lineWin = 0;
-            if (maxLen > 0 && gameIcon < paytable.Length && maxLen - 1 < paytable[gameIcon].Length)
+            bool isValidCombination =
+                maxLen > 0 &&
+                gameIcon >= 0 &&
+                gameIcon < paytable.Length &&
+                maxLen - 1 < paytable[gameIcon].Length;
+
+            if (isValidCombination)
             {
                 lineWin = paytable[gameIcon][maxLen - 1];
             }
 
-            var combination = new List<int>(line.Length);
-            for (int i = 0; i < line.Length; i++)
+            result.Win += lineWin;
+            if (isValidCombination)
             {
-                combination.Add(window[line[i]]);
+                result.WinningCombinations.Add(new WinningCombination
+                {
+                    Symbol = gameIcon,
+                    Length = maxLen,
+                    Win = lineWin
+                });
+            }
+        }
+
+        return result;
+    }
+
+    private bool IsBonusGameTriggered(int[] window)
+    {
+        int offset = 0;
+        for (int reelIndex = 0; reelIndex < windowSize.Length; reelIndex++)
+        {
+            bool hasScatterInReel = false;
+            for (int row = 0; row < windowSize[reelIndex]; row++)
+            {
+                if (iconScatter.Contains(window[offset + row]))
+                {
+                    hasScatterInReel = true;
+                    break;
+                }
             }
 
-            winningCombinations.Add(new WinningCombinationInfo
+            if (!hasScatterInReel)
             {
-                Line = lineIndex,
-                Length = maxLen + 1,
-                Icon = gameIcon,
-                Combination = combination
-            });
+                return false;
+            }
 
-            win += lineWin;
+            offset += windowSize[reelIndex];
         }
 
-        return (win, winningCombinations);
+        return true;
     }
 
-    public int SpinBaseGameWin(long? index = null)
+    public SpinResult SpinBaseGameWin(long? index = null)
     {
-        if (index == null)
-        {
-            index = rng.NextInt64(cycle);
-        }
-
+        index ??= rng.NextInt64(cycle);
         FillIndexBuffer(index.Value);
         FillWindowBuffer();
-        var (win, _) = GetWin(windowBuffer, includeWinningCombinations: false);
-        return win;
-    }
-
-    public class SpinResult
-    {
-        public long Index { get; set; }
-        public Dictionary<string, int> Result { get; set; } = new();
-        public List<WinningCombinationInfo> WinningCombinations { get; set; } = new();
-    }
-
-    public SpinResult Spin(long? index = null, bool includeWinningCombinations = true)
-    {
-        if (index == null)
-        {
-            index = rng.NextInt64(cycle);
-        }
-
-        FillIndexBuffer(index.Value);
-        FillWindowBuffer();
-        var (win, winningCombinations) = GetWin(windowBuffer, includeWinningCombinations);
-
-        var result = new SpinResult
-        {
-            Index = index.Value,
-            WinningCombinations = winningCombinations
-        };
-
-        result.Result["base_game_win"] = win;
+        var result = GetWin(windowBuffer);
+        result.BonusGameTriggered = IsBonusGameTriggered(windowBuffer);
 
         return result;
     }

@@ -1,65 +1,65 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace ReelsGenerator;
 
 public class Game
+    : IGameEngine
 {
-    private int spinNumber;
-    private Slot slot;
+    private readonly int spinNumber;
+    private readonly ISlotEngine slot;
+    private readonly Dictionary<(int Symbol, int Length), long> winningCombinationCounts = new();
+    private readonly Dictionary<(int Symbol, int Length), long> winningCombinationWinSums = new();
 
-    private double baseGameWin;
-    private double freeGameWin;
     private double totalWin;
     private int countWin;
-    private List<int> wins;
+    private int bonusGameTriggerCount;
 
     private double rtp;
     private double hitFrequency;
 
-    public Game(List<List<int>> reels, int configuredSpinNumber, SlotMachineConfig slotConfig)
+    public Game(List<List<int>> reels, int configuredSpinNumber, SlotMachineConfig slotConfig, ISlotEngineFactory slotFactory)
     {
         spinNumber = configuredSpinNumber;
-        slot = new Slot(reels, slotConfig);
+        slot = slotFactory.Create(reels, slotConfig);
 
-        baseGameWin = 0;
-        freeGameWin = 0;
         totalWin = 0;
         countWin = 0;
-        wins = new List<int>();
+        bonusGameTriggerCount = 0;
 
         rtp = 0;
         hitFrequency = 0;
     }
 
-    public void Run(bool collectWins = false)
+    public void Run()
     {
-        if (collectWins)
-        {
-            wins.Clear();
-        }
-        baseGameWin = 0;
-        freeGameWin = 0;
         totalWin = 0;
         countWin = 0;
+        bonusGameTriggerCount = 0;
+        winningCombinationCounts.Clear();
+        winningCombinationWinSums.Clear();
 
         for (int i = 0; i < spinNumber; i++)
         {
-            int baseGameWinValue = slot.SpinBaseGameWin();
-            int freeGameWinValue = 0;
+            var spinResult = slot.SpinBaseGameWin();
+            int baseGameWinValue = spinResult.Win;
 
-            int totalWinValue = baseGameWinValue + freeGameWinValue;
-
-            baseGameWin += baseGameWinValue;
-            freeGameWin += freeGameWinValue;
-            totalWin += totalWinValue;
-            if (collectWins)
+            foreach (var combination in spinResult.WinningCombinations)
             {
-                wins.Add(totalWinValue);
+                var key = (combination.Symbol, combination.Length);
+                winningCombinationCounts.TryGetValue(key, out long currentCount);
+                winningCombinationCounts[key] = currentCount + 1;
+                winningCombinationWinSums.TryGetValue(key, out long currentWinSum);
+                winningCombinationWinSums[key] = currentWinSum + combination.Win;
             }
 
-            if (totalWinValue > 0)
+            totalWin += baseGameWinValue;
+            if (spinResult.BonusGameTriggered)
+            {
+                bonusGameTriggerCount++;
+            }
+
+            if (baseGameWinValue > 0)
             {
                 countWin++;
             }
@@ -74,10 +74,18 @@ public class Game
         return (rtp, hitFrequency);
     }
 
-    public double GetRtp() => rtp;
-    public double GetHitFrequency() => hitFrequency;
-    public double GetTotalWin() => totalWin;
-    public double GetBaseGameWin() => baseGameWin;
-    public double GetFreeGameWin() => freeGameWin;
-    public List<int> GetWins() => wins;
+    public IReadOnlyDictionary<(int Symbol, int Length), long> GetWinningCombinationCounts()
+    {
+        return winningCombinationCounts;
+    }
+
+    public IReadOnlyDictionary<(int Symbol, int Length), long> GetWinningCombinationWinSums()
+    {
+        return winningCombinationWinSums;
+    }
+
+    public double GetBonusGameFrequency()
+    {
+        return spinNumber > 0 ? (double)bonusGameTriggerCount / spinNumber : 0;
+    }
 }
